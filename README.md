@@ -36,7 +36,7 @@ to any text from a whitelisted sender.
 
 ## Pair the WhatsApp account (one-time)
 
-Create the Evolution instance and register the webhook in a single call:
+**Step 1** — Create the Evolution instance and register the webhook:
 
 ```zsh
 set -a && source .env && set +a   # load env vars into the shell
@@ -54,16 +54,11 @@ curl -s -X POST http://localhost:8080/instance/create \
       \"base64\": false,
       \"events\": [\"MESSAGES_UPSERT\"]
     }
-  }" | tee /tmp/evo-create.json | jq -r '.qrcode.base64' \
-  | python3 -c "import sys,base64; d=sys.stdin.read().strip().split(',',1)[-1]; open('/tmp/qr.png','wb').write(base64.b64decode(d))"
-
-explorer.exe "$(wslpath -w /tmp/qr.png)"
+  }" | tee /tmp/evo-create.json | jq .
 ```
 
-On the dedicated phone: WhatsApp → Settings → Linked Devices → Link a device →
-scan `/tmp/qr.png`. The pairing completes in a few seconds.
+**Step 2** — Fetch a fresh QR and open it immediately (expires in ~3 min):
 
-If you miss the window, fetch a fresh QR with:
 ```zsh
 curl -s http://localhost:8080/instance/connect/$EVOLUTION_INSTANCE_NAME \
   -H "apikey: $EVOLUTION_API_KEY" \
@@ -71,6 +66,11 @@ curl -s http://localhost:8080/instance/connect/$EVOLUTION_INSTANCE_NAME \
   | python3 -c "import sys,base64; d=sys.stdin.read().strip().split(',',1)[-1]; open('/tmp/qr.png','wb').write(base64.b64decode(d))"
 explorer.exe "$(wslpath -w /tmp/qr.png)"
 ```
+
+On the dedicated phone: WhatsApp → Settings → Linked Devices → Link a device →
+scan `/tmp/qr.png`. The pairing completes in a few seconds.
+
+If you miss the window, just repeat Step 2.
 
 ## Test it
 
