@@ -1,0 +1,26 @@
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# App data
+app/data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.python-version
+
+# uv
+# (uv.lock is committed for reproducibility)
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Docker
+docker-compose.override.yml

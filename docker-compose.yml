@@ -1,0 +1,90 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      SERVER_URL: http://localhost:8080
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=evolution_api
+      DATABASE_CONNECTION_CLIENT_NAME: shopping_agent
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: shopping
+      CACHE_REDIS_SAVE_INSTANCES: "false"
+      CACHE_LOCAL_ENABLED: "false"
+      LOG_LEVEL: ERROR,WARN,INFO
+      LOG_COLOR: "true"
+      TELEMETRY_ENABLED: "false"
+      DEL_INSTANCE: "false"
+      LANGUAGE: en
+      CONFIG_SESSION_PHONE_CLIENT: Shopping Agent
+      CONFIG_SESSION_PHONE_NAME: Chrome
+    volumes:
+      - evolution_instances:/evolution/instances
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks:
+      - internal
+
+  app:
+    build: ./app
+    restart: unless-stopped
+    depends_on:
+      - evolution
+    environment:
+      EVOLUTION_BASE_URL: http://evolution:8080
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+      EVOLUTION_INSTANCE_NAME: ${EVOLUTION_INSTANCE_NAME}
+      WEBHOOK_TOKEN: ${WEBHOOK_TOKEN}
+      ALLOWED_NUMBERS: ${ALLOWED_NUMBERS}
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - internal
+
+volumes:
+  postgres_data:
+  redis_data:
+  evolution_instances:
+
+networks:
+  internal:
+    driver: bridge
