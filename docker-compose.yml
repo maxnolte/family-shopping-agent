@@ -34,7 +34,7 @@ services:
       redis:
         condition: service_started
     environment:
-      SERVER_URL: http://localhost:8080
+      SERVER_URL: http://evolution:8080
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
       DATABASE_PROVIDER: postgresql
       DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=evolution_api
@@ -50,7 +50,7 @@ services:
       CACHE_REDIS_PREFIX_KEY: shopping
       CACHE_REDIS_SAVE_INSTANCES: "false"
       CACHE_LOCAL_ENABLED: "false"
-      LOG_LEVEL: ERROR,WARN,INFO
+      LOG_LEVEL: ERROR,WARN,INFO,DEBUG
       LOG_COLOR: "true"
       TELEMETRY_ENABLED: "false"
       DEL_INSTANCE: "false"

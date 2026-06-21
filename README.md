@@ -13,7 +13,7 @@ to any text from a whitelisted sender.
 ## First-time setup
 
 1. Copy the env template and fill it in with strong random values:
-   ```bash
+   ```zsh
    cp .env.example .env
    # generate secrets
    openssl rand -hex 32   # use for EVOLUTION_API_KEY
@@ -23,13 +23,13 @@ to any text from a whitelisted sender.
    no `+`, comma-separated). E.g. `41791234567,41797654321`.
 
 2. Bring up the stack:
-   ```bash
+   ```zsh
    docker compose up -d --build
    ```
    First build pulls Postgres, Redis, Evolution API and builds the Python app.
 
 3. Wait ~20s for everything to come up, then check:
-   ```bash
+   ```zsh
    docker compose ps
    curl -s http://localhost:8000/health   # → {"ok":true}
    ```
@@ -38,8 +38,8 @@ to any text from a whitelisted sender.
 
 Create the Evolution instance and register the webhook in a single call:
 
-```bash
-set -a; source .env; set +a   # load env vars into the shell
+```zsh
+set -a && source .env && set +a   # load env vars into the shell
 
 curl -s -X POST http://localhost:8080/instance/create \
   -H "apikey: $EVOLUTION_API_KEY" \
@@ -55,20 +55,21 @@ curl -s -X POST http://localhost:8080/instance/create \
       \"events\": [\"MESSAGES_UPSERT\"]
     }
   }" | tee /tmp/evo-create.json | jq -r '.qrcode.base64' \
-  | sed 's|^data:image/png;base64,||' | base64 -d > /tmp/qr.png
+  | python3 -c "import sys,base64; d=sys.stdin.read().strip().split(',',1)[-1]; open('/tmp/qr.png','wb').write(base64.b64decode(d))"
 
-xdg-open /tmp/qr.png   # or: imv /tmp/qr.png, open /tmp/qr.png on macOS
+explorer.exe "$(wslpath -w /tmp/qr.png)"
 ```
 
 On the dedicated phone: WhatsApp → Settings → Linked Devices → Link a device →
 scan `/tmp/qr.png`. The pairing completes in a few seconds.
 
 If you miss the window, fetch a fresh QR with:
-```bash
+```zsh
 curl -s http://localhost:8080/instance/connect/$EVOLUTION_INSTANCE_NAME \
   -H "apikey: $EVOLUTION_API_KEY" \
-  | jq -r '.base64' | sed 's|^data:image/png;base64,||' | base64 -d > /tmp/qr.png
-xdg-open /tmp/qr.png
+  | jq -r '.base64' \
+  | python3 -c "import sys,base64; d=sys.stdin.read().strip().split(',',1)[-1]; open('/tmp/qr.png','wb').write(base64.b64decode(d))"
+explorer.exe "$(wslpath -w /tmp/qr.png)"
 ```
 
 ## Test it
@@ -77,14 +78,14 @@ From your own (whitelisted) WhatsApp account, send any message to the
 dedicated number. You should receive: **"Message received, thank you"**.
 
 Watch logs to debug:
-```bash
+```zsh
 docker compose logs -f app
 docker compose logs -f evolution
 ```
 
 ## Stop / reset
 
-```bash
+```zsh
 docker compose down              # stop, keep data
 docker compose down -v           # stop and wipe Postgres + Evolution session
                                  # (you will need to re-pair the QR)
