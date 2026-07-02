@@ -75,6 +75,11 @@ services:
       EVOLUTION_INSTANCE_NAME: ${EVOLUTION_INSTANCE_NAME}
       WEBHOOK_TOKEN: ${WEBHOOK_TOKEN}
       ALLOWED_NUMBERS: ${ALLOWED_NUMBERS}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      DB_PATH: /app/data/shopping.db
+    volumes:
+      - ./app/data:/app/data
     ports:
       - "127.0.0.1:8000:8000"
     networks:

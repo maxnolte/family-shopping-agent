@@ -2,13 +2,16 @@
 
 WhatsApp-based shopping list agent. See [PLAN.md](PLAN.md) for the full architecture.
 
-This step (Phase 0): minimal echo bot — replies "Message received, thank you"
-to any text from a whitelisted sender.
+Phase 1 (current): send natural-language messages to a dedicated WhatsApp
+number to manage a shared shopping list. Messages from whitelisted senders are
+parsed by Gemini Flash into add / remove / list / clear operations against a
+SQLite database.
 
 ## Prerequisites
 
 - Docker + Docker Compose
 - A dedicated WhatsApp account on a phone you control (for the QR pairing)
+- A Google AI Studio API key for Gemini (https://aistudio.google.com/apikey)
 
 ## First-time setup
 
@@ -35,6 +38,15 @@ to any text from a whitelisted sender.
    ```
 
 ## Pair the WhatsApp account (one-time)
+
+> **Already paired?** Check first — if this prints `"state": "open"`, skip the
+> steps below entirely (there's nothing to pair, and the QR call will return
+> junk):
+> ```zsh
+> set -a && source .env && set +a
+> curl -s http://localhost:8080/instance/connectionState/$EVOLUTION_INSTANCE_NAME \
+>   -H "apikey: $EVOLUTION_API_KEY" | jq .
+> ```
 
 **Step 1** — Create the Evolution instance and register the webhook:
 
@@ -74,8 +86,15 @@ If you miss the window, just repeat Step 2.
 
 ## Test it
 
-From your own (whitelisted) WhatsApp account, send any message to the
-dedicated number. You should receive: **"Message received, thank you"**.
+From your own (whitelisted) WhatsApp account, send messages to the dedicated
+number:
+
+- `add milk and 2 kg potatoes` → **✓ Added: milk, potatoes (2 kg)**
+- `what's on the list?` → the current list
+- `remove milk` → **✓ Removed: milk**
+- `clear the list` → asks you to reply `yes` within 2 minutes to confirm
+
+The list lives in `app/data/shopping.db` (SQLite), persisted across restarts.
 
 Watch logs to debug:
 ```zsh
@@ -89,4 +108,5 @@ docker compose logs -f evolution
 docker compose down              # stop, keep data
 docker compose down -v           # stop and wipe Postgres + Evolution session
                                  # (you will need to re-pair the QR)
+rm -f app/data/shopping.db       # wipe the shopping list only
 ```

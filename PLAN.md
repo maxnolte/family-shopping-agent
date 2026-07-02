@@ -268,15 +268,19 @@ No application code changes are needed between environments.
 ## Phased Roadmap
 
 ### Phase 1 — Core (text only)
-- [ ] Set up Evolution API in Docker, connect dedicated WA account
-- [ ] FastAPI app with `/webhook/<token>` endpoint (token check + sender whitelist)
-- [ ] Per-sender rate limiter
-- [ ] Gemini Flash integration: pass current list + message, parse JSON ops
-- [ ] SQLite DB with `shopping_items` table
-- [ ] Add / remove operations, plus "what's on the list" reply
-- [ ] Clear-list with two-step confirmation (in-memory pending state, 2-min TTL)
-- [ ] Confirmation message back to sender
-- [ ] `docker-compose.yml` for full local stack
+- [x] Set up Evolution API in Docker, connect dedicated WA account
+- [x] FastAPI app with `/webhook/<token>` endpoint (token check + sender whitelist)
+- [x] Per-sender rate limiter
+- [x] Gemini Flash integration: pass current list + message, parse JSON ops
+- [x] SQLite DB with `shopping_items` table
+- [x] Add / remove operations, plus "what's on the list" reply
+- [x] Clear-list with two-step confirmation (in-memory pending state, 2-min TTL)
+- [x] Confirmation message back to sender
+- [x] `docker-compose.yml` for full local stack
+
+> Note: uses the current `google-genai` SDK (the `google-generativeai`
+> package referenced above is now deprecated). Default model
+> `gemini-2.5-flash`, overridable via `GEMINI_MODEL`.
 
 ### Phase 2 — Polish
 - [ ] Deduplication: if item already on list, update quantity instead of duplicating
