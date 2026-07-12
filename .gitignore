@@ -3,8 +3,9 @@
 .env.local
 .env.*.local
 
-# App data
-app/data/
+# App data (keep the dir itself so Docker doesn't create it as root)
+app/data/*
+!app/data/.gitkeep
 
 # Python
 __pycache__/
@@ -12,6 +13,8 @@ __pycache__/
 *.egg-info/
 .venv/
 .python-version
+dist/
+.ruff_cache/
 
 # uv
 # (uv.lock is committed for reproducibility)

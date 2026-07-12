@@ -168,17 +168,23 @@ Hard delete on remove: simpler than soft-delete, and history isn't a requirement
 ```
 shopping-agent/
 ├── PLAN.md                      ← this file
-├── DEPLOY.md                    ← OVHcloud deployment & devops proposal
+├── DEPLOY.md                    ← OVHcloud deployment & devops guide
 ├── README.md                    ← setup, pairing, day-to-day usage
+├── LICENSE                      ← MIT
 ├── .env.example                 ← template for secrets
 ├── docker-compose.yml           ← full local stack (4 services)
-├── docker-compose.prod.yml      ← production overrides (planned — DEPLOY.md)
+├── docker-compose.prod.yml      ← production overrides (see DEPLOY.md)
+├── deploy.sh                    ← git pull + compose up (run on the VPS)
+├── backup.sh                    ← nightly SQLite backup (cron on the VPS)
+├── .github/
+│   ├── workflows/ci.yml         ← ruff, bandit, pip-audit, build, trivy
+│   └── dependabot.yml           ← weekly dependency-bump PRs
 │
 └── app/
-    ├── Dockerfile
-    ├── pyproject.toml           ← uv-managed, defines dependencies
-    ├── uv.lock                  ← to be committed (see DEPLOY.md §5)
-    ├── data/                    ← SQLite volume (gitignored)
+    ├── Dockerfile               ← multi-stage uv build, non-root runtime
+    ├── pyproject.toml           ← uv-managed deps + ruff config
+    ├── uv.lock                  ← committed; Docker builds use --frozen
+    ├── data/                    ← SQLite volume (gitignored except .gitkeep)
     └── src/
         └── shopping_agent/
             ├── main.py          ← FastAPI app setup, lifespan (init_db), /health
@@ -277,17 +283,17 @@ no published ports).
 > `gemini-2.5-flash`, overridable via `GEMINI_MODEL`.
 
 ### Phase 2 — Polish
-- [ ] Deduplication: if item already on list, update quantity instead of duplicating
+- [x] Deduplication: if item already on list, update quantity instead of duplicating
 - [x] Error handling: unrecognised message → friendly reply, no DB change
-- [ ] Simple logging (timestamps, sender, action — not full message text)
-      *(partial: timestamps + sender logged; per-action logging still to do)*
+- [x] Simple logging (timestamps, sender, action — not full message text)
 
 ### Phase 3 — Production
-- [ ] `docker-compose.prod.yml` (no host ports on either container, `restart: always`)
+- [x] `docker-compose.prod.yml` (no host ports on any container, `restart: always`)
 - [ ] Deploy to OVHcloud VPS-1 (~6 CHF/month), firewall = SSH only (see DEPLOY.md)
 - [ ] Initial WA pairing via SSH local-forward of port 8080
 - [ ] Set Google Cloud billing budget alert + hard cap at 5 CHF
 - [ ] Nightly `rclone` backup of `shopping.db` to off-server storage
+      *(`backup.sh` ready; cron entry on the VPS still to add)*
 
 ### Phase 4 — Image support (future)
 - [ ] Receive image messages from Evolution API

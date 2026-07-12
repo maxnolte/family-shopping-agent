@@ -8,7 +8,7 @@ operations. The AI provider is isolated to this module so it can be swapped
 import json
 import logging
 import os
-from enum import Enum
+from enum import StrEnum
 
 from google import genai
 from google.genai import types
@@ -24,7 +24,7 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 _client = genai.Client(api_key=GEMINI_API_KEY)
 
 
-class Action(str, Enum):
+class Action(StrEnum):
     add = "add"
     remove = "remove"
     clear = "clear"
@@ -78,10 +78,7 @@ def _render_list(items: list[ShoppingItem]) -> str:
 async def parse_message(
     message: str, current_items: list[ShoppingItem]
 ) -> list[Operation]:
-    prompt = (
-        f"Current list:\n{_render_list(current_items)}\n\n"
-        f'Message: "{message}"'
-    )
+    prompt = f'Current list:\n{_render_list(current_items)}\n\nMessage: "{message}"'
     try:
         response = await _client.aio.models.generate_content(
             model=GEMINI_MODEL,

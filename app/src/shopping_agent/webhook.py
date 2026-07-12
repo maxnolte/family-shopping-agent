@@ -1,5 +1,6 @@
 import logging
 import os
+import secrets
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -11,9 +12,7 @@ log = logging.getLogger("shopping-agent.webhook")
 
 WEBHOOK_TOKEN = os.environ["WEBHOOK_TOKEN"]
 ALLOWED_NUMBERS = {
-    n.strip().lstrip("+")
-    for n in os.environ["ALLOWED_NUMBERS"].split(",")
-    if n.strip()
+    n.strip().lstrip("+") for n in os.environ["ALLOWED_NUMBERS"].split(",") if n.strip()
 }
 
 router = APIRouter()
@@ -30,7 +29,7 @@ def _extract_text(message: dict) -> str:
 
 @router.post("/webhook/{token}")
 async def webhook(token: str, request: Request) -> dict[str, str | bool]:
-    if token != WEBHOOK_TOKEN:
+    if not secrets.compare_digest(token, WEBHOOK_TOKEN):
         raise HTTPException(status_code=404)
 
     payload = await request.json()

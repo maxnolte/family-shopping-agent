@@ -90,6 +90,7 @@ From your own (whitelisted) WhatsApp account, send messages to the dedicated
 number:
 
 - `add milk and 2 kg potatoes` → **✓ Added: milk, potatoes (2 kg)**
+- `add 3 kg potatoes` again → **✓ Updated: potatoes (3 kg)** (no duplicates)
 - `what's on the list?` → the current list
 - `remove milk` → **✓ Removed: milk**
 - `clear the list` → asks you to reply `yes` within 2 minutes to confirm
@@ -110,3 +111,20 @@ docker compose down -v           # stop and wipe Postgres + Evolution session
                                  # (you will need to re-pair the QR)
 rm -f app/data/shopping.db       # wipe the shopping list only
 ```
+
+## Development
+
+Requires [uv](https://docs.astral.sh/uv/). From `app/`:
+
+```zsh
+uvx ruff format . && uvx ruff check .   # format + lint (CI enforces both)
+uv run pytest tests/ -q                 # end-to-end tests (Gemini stubbed)
+```
+
+CI (`.github/workflows/ci.yml`) runs ruff, the tests, bandit, pip-audit, a
+package build, a Docker build and a trivy image scan on every push.
+
+## Production
+
+See [DEPLOY.md](DEPLOY.md): OVHcloud VPS setup, `deploy.sh`, prod compose
+override (no published ports), and nightly backups via `backup.sh`.

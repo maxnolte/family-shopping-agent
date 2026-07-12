@@ -1,0 +1,18 @@
+# Weekly dependency-bump PRs. Vulnerability *alerts* are a repo setting:
+# Settings → Security → Dependabot alerts (enable when making the repo public).
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/app"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/app"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

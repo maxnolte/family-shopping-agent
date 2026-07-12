@@ -1,0 +1,27 @@
+# Production overrides (OVHcloud VPS). See DEPLOY.md.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# or put in the server's .env:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+#
+# `ports: !override []` (requires Compose v2.24+) removes the localhost
+# publishes entirely: nothing listens on the host, the public attack surface
+# is SSH only. For one-off API access (QR pairing, debugging), SSH-tunnel and
+# temporarily re-add the port, or use:
+#   docker compose exec app curl ...
+
+services:
+  postgres:
+    restart: always
+
+  redis:
+    restart: always
+
+  evolution:
+    restart: always
+    ports: !override []
+
+  app:
+    restart: always
+    ports: !override []

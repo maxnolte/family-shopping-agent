@@ -44,15 +44,16 @@ Evolution session volume off-server.
 - If you want to keep the current list: `scp app/data/shopping.db
   vps:~/shopping-agent/app/data/`.
 
-### Prod compose override (new file, ~15 lines)
+### Prod compose override — ✅ implemented
 
-`docker-compose.prod.yml` — PLAN.md Phase 3 already calls for this:
+[`docker-compose.prod.yml`](docker-compose.prod.yml):
 
 - `restart: always` on all four services.
-- Remove the `127.0.0.1:8000` and `127.0.0.1:8080` port publishes entirely
-  (`ports: !override []`). Evolution's outbound WebSocket to WhatsApp and the
-  internal `evolution → app` webhook both work without any published port.
-  When you need to hit the APIs (pairing, debugging), SSH-tunnel instead.
+- Removes the `127.0.0.1:8000` and `127.0.0.1:8080` port publishes entirely
+  (`ports: !override []`, needs Compose v2.24+ — fine on a fresh Debian 12).
+  Evolution's outbound WebSocket to WhatsApp and the internal
+  `evolution → app` webhook both work without any published port. When you
+  need to hit the APIs (pairing, debugging), SSH-tunnel instead.
 
 Run with:
 
@@ -79,14 +80,16 @@ disconnects we debugged. Fresh pair instead:
 5. Stop the laptop stack for good (`docker compose down`) so two bots don't
    answer.
 
-## 2. Deploying changes
+## 2. Deploying changes — ✅ implemented
 
-`deploy.sh` in the repo root (run on the VPS, or from the laptop as
-`ssh vps 'cd shopping-agent && ./deploy.sh'`):
+[`deploy.sh`](deploy.sh) in the repo root (bash, not zsh — a stock Debian VPS
+has no zsh). Run on the VPS, or from the laptop as
+`ssh vps 'cd shopping-agent && ./deploy.sh'`:
 
-```zsh
-#!/usr/bin/env zsh
+```bash
+#!/usr/bin/env bash
 set -euo pipefail
+cd "$(dirname "$0")"
 git pull --ff-only
 docker compose up -d --build
 docker compose ps
@@ -115,11 +118,13 @@ Nightly cron on the VPS:
 15 3 * * * ~/shopping-agent/backup.sh
 ```
 
-`backup.sh`: `sqlite3 shopping.db ".backup /tmp/shopping-$(date +\%F).db"`
-(safe while the app runs), then `rclone copy` to any free/cheap S3-compatible
-bucket or even to your laptop via a reverse-direction pull. Keep ~14 dailies,
-`rclone delete --min-age 14d` handles retention. OVH's own Object Storage
-works if you want to stay in one bill.
+[`backup.sh`](backup.sh) — ✅ implemented. It uses SQLite's online-backup API
+(safe while the app runs) via the app container's Python, so the host needs no
+sqlite3 install. If an rclone remote named `backup` is configured it also
+copies off-server and prunes remote copies older than 14 days; without rclone
+you still get local timestamped snapshots in `~/backups/shopping-agent/`
+(14-day local retention either way). Any free/cheap S3-compatible bucket
+works — OVH's own Object Storage keeps it on one bill.
 
 ## 4. Ongoing ops
 
@@ -135,12 +140,13 @@ works if you want to stay in one bill.
   app; skip monitoring infra. If you want a safety net later, a free
   healthchecks.io ping in the backup cron covers "server silently died".
 
-## 5. DevOps: linting, security scanning, packaging
+## 5. DevOps: linting, security scanning, packaging — ✅ implemented
 
 Deploys stay manual (section 2), but quality checks belong in CI — they're
 free (GitHub Actions private-repo free tier is ~2,000 min/month; this
 pipeline uses ~2 min/push) and they catch problems before they reach the VPS.
-One workflow, `.github/workflows/ci.yml`, on every push/PR:
+One workflow, [`.github/workflows/ci.yml`](.github/workflows/ci.yml), on
+every push/PR:
 
 ### Formatting + linting — ruff (black-compatible)
 
@@ -156,15 +162,14 @@ but one tool beats two.
 
 | Layer | Tool | Catches |
 |---|---|---|
-| Dependencies | **Dependabot** (repo setting, no code) + **`uvx pip-audit`** in CI | known CVEs in fastapi/httpx/etc.; Dependabot also opens bump PRs |
+| Dependencies | **Dependabot** (`.github/dependabot.yml`; alerts are a repo setting) + **`uvx pip-audit`** in CI | known CVEs in fastapi/httpx/etc.; Dependabot also opens bump PRs |
 | Own code (SAST) | **`uvx bandit -r app/src`** in CI | hardcoded secrets, `eval`, injection patterns, bad TLS usage |
 | Docker image | **trivy** on the built image in CI | CVEs in the `python:3.12-slim` OS layer that Python-level scanners never see |
 
-All free, all read-only, none block deploys unless you make them. Suggested
-policy: fail CI on `HIGH`+ severity only — household project, not a bank.
-Prerequisite worth doing anyway: run `uv lock` once and commit `uv.lock`
-(the Dockerfile and `.gitignore` already expect it) so scans and builds are
-against pinned, reproducible versions.
+All free, all read-only, none block deploys unless you make them. Policy:
+fail CI on `HIGH`+ severity only — household project, not a bank.
+`uv.lock` is committed and the Dockerfile syncs `--frozen`, so scans and
+builds run against pinned, reproducible versions.
 
 ### Building a Python package
 
@@ -189,38 +194,40 @@ guarantee that `main` always passed the gates.
 
 History audit came back clean: `.env` was never tracked, no keys or real phone
 numbers anywhere in git history (the numbers in docs are the documented
-placeholders). Remaining items before flipping the repo public — all small,
-none structural:
+placeholders). Findings and their status:
 
-1. **Add a LICENSE** (MIT fits) — a public repo without one is technically
-   "all rights reserved", which mostly confuses people.
-2. **Revert Evolution `LOG_LEVEL` to `ERROR,WARN,INFO`** — the `DEBUG` entry
-   was added during the pairing investigation and committed. Debug logs can
-   include message payloads, which contradicts the "don't log message text"
-   goal.
-3. **Silence or accept the token in access logs** — uvicorn's access log
-   prints `POST /webhook/<token>`. Logs never leave the container, so this is
-   acceptable; the clean fix later is `--no-access-log` or moving the secret
-   to a header.
-4. **`secrets.compare_digest` for the webhook token check** — cosmetic
-   (timing attacks are unreachable with no public port), one-word change.
-5. **Non-root `USER` in the app Dockerfile** — one line, standard hygiene.
-6. **Commit `uv.lock`** (already in §5) — the Dockerfile and `.gitignore`
-   both expect it; without it, builds aren't reproducible.
+1. ✅ **LICENSE** — MIT, in the repo root.
+2. ✅ **Evolution `LOG_LEVEL` reverted to `ERROR,WARN,INFO`** — the `DEBUG`
+   entry (pairing-investigation leftover) could log message payloads,
+   contradicting the "don't log message text" goal.
+3. ✅ **Token no longer in access logs** — uvicorn runs with
+   `--no-access-log`; the app logs its own structured lines
+   (timestamp, sender, action) instead.
+4. ✅ **`secrets.compare_digest`** for the webhook token check.
+5. ✅ **Non-root `USER` in the app Dockerfile** (uid 1000, matching the
+   host user so the `./app/data` bind mount stays writable; the dir is kept
+   in git via `.gitkeep` so Docker never creates it root-owned).
+6. ✅ **`uv.lock` committed**; Dockerfile syncs `--frozen`.
+
+Remaining manual steps (GitHub UI / host-side, not repo files):
+
+- Enable **Dependabot alerts** in repo Settings → Security when going public.
+- One-time on any machine that ran the stack before the non-root change:
+  `sudo chown -R "$USER:$USER" app/data` (Docker created it as root).
 
 ## Cost of this setup
 
 Zero beyond the VPS you're already paying for (plus pennies for object
-storage). Everything else is OVH panel config + ~3 small files in the repo
-(`docker-compose.prod.yml`, `deploy.sh`, `backup.sh`).
+storage). Everything else is OVH panel config; the repo files
+(`docker-compose.prod.yml`, `deploy.sh`, `backup.sh`, CI) are all in place.
 
 ## Suggested order of work
 
-1. `docker-compose.prod.yml` + `deploy.sh` + `backup.sh` in the repo (can be
-   written and reviewed before the VPS even exists).
+1. ✅ `docker-compose.prod.yml` + `deploy.sh` + `backup.sh` in the repo.
 2. VPS arrives → user, SSH hardening, firewall, unattended-upgrades.
 3. Deploy key, clone, `scp .env`, first `docker compose up -d --build`.
 4. Pair WhatsApp via SSH tunnel; retire the laptop stack.
-5. Wire up backups; test a restore once (`sqlite3` open the backup file).
-6. Anytime, independent of the VPS: commit `uv.lock`, add ruff config +
-   `.github/workflows/ci.yml`, enable Dependabot in the repo settings.
+5. Wire up the backup cron; test a restore once (open the backup file with
+   `sqlite3` or Python).
+6. ✅ `uv.lock`, ruff config, CI workflow, Dependabot config — all in the
+   repo. Still to click: Dependabot alerts in repo settings.
