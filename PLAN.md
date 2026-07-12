@@ -31,7 +31,7 @@ Hetzner cloud server.
 | Database         | SQLite (local file, via SQLModel)   |
 | AI parsing       | Google Gemini Flash (see below)     |
 | Containerisation | Docker + Docker Compose             |
-| Hosting (prod)   | Hetzner Cloud VPS (CX11 or similar) |
+| Hosting (prod)   | OVHcloud VPS-1 (see [DEPLOY.md](DEPLOY.md)) |
 
 ---
 
@@ -45,7 +45,7 @@ Hetzner cloud server.
   at ~200 tokens each ≈ $0.05/month, well inside the 5 CHF cap
 - Google Cloud has a **hard billing budget cap**: set it to 5 CHF and the project's
   API calls stop rather than overspend
-- Simple REST API, official Python SDK (`google-generativeai`)
+- Simple REST API, official Python SDK (`google-genai`)
 
 **Alternative if preferred:**
 
@@ -168,24 +168,24 @@ Hard delete on remove: simpler than soft-delete, and history isn't a requirement
 ```
 shopping-agent/
 ├── PLAN.md                      ← this file
+├── DEPLOY.md                    ← OVHcloud deployment & devops proposal
+├── README.md                    ← setup, pairing, day-to-day usage
 ├── .env.example                 ← template for secrets
-├── docker-compose.yml           ← local dev stack
-├── docker-compose.prod.yml      ← production overrides (Hetzner)
-│
-├── evolution/                   ← Evolution API config (mounted into container)
-│   └── ...
+├── docker-compose.yml           ← full local stack (4 services)
+├── docker-compose.prod.yml      ← production overrides (planned — DEPLOY.md)
 │
 └── app/
     ├── Dockerfile
     ├── pyproject.toml           ← uv-managed, defines dependencies
-    ├── uv.lock
+    ├── uv.lock                  ← to be committed (see DEPLOY.md §5)
+    ├── data/                    ← SQLite volume (gitignored)
     └── src/
         └── shopping_agent/
-            ├── main.py          ← FastAPI app, startup
-            ├── webhook.py       ← /webhook/<token> endpoint, token + sender check
+            ├── main.py          ← FastAPI app setup, lifespan (init_db), /health
+            ├── webhook.py       ← /webhook/<token>: token, whitelist, rate limit
             ├── ratelimit.py     ← per-sender token bucket (in-memory)
-            ├── ai_parser.py     ← Gemini call, returns intent JSON
-            ├── db.py            ← SQLModel setup, DB session
+            ├── ai_parser.py     ← Gemini structured-output intent parser
+            ├── db.py            ← SQLModel engine, init_db, sessions
             ├── models.py        ← SQLModel table definitions
             ├── shopping.py      ← add/remove/list/clear business logic
             ├── pending.py       ← in-memory pending-confirmation store (TTL)
@@ -196,23 +196,27 @@ shopping-agent/
 
 ## Docker Compose
 
-Two services on a private Docker network. Nothing outside the host ever needs to
-reach either container — the only inbound traffic is Evolution API ↔ WhatsApp servers,
-which is initiated *outbound* from inside Evolution.
+Four services on a private Docker network. Nothing outside the host ever needs
+to reach any container — the only external traffic is Evolution API ↔ WhatsApp
+servers, which is initiated *outbound* from inside Evolution.
 
-1. **`evolution`** — the official `atendai/evolution-api` image. Published to
-   `127.0.0.1:8080` for the initial QR-code pairing (you scan the QR from the host
-   browser). No public port mapping in either env.
+1. **`postgres`** + **`redis`** — storage and cache backing Evolution API
+   (the shopping list itself lives in the app's SQLite, not here). No host
+   ports.
 
-2. **`app`** — Python FastAPI container. Published to `127.0.0.1:8000` on laptop for
-   easy debugging; on prod, no port mapping at all. Mounts `./app/data/` for the SQLite
-   file.
+2. **`evolution`** — the `evoapicloud/evolution-api` image (version-pinned).
+   Published to `127.0.0.1:8080` for the initial QR-code pairing only.
+
+3. **`app`** — Python FastAPI container. Published to `127.0.0.1:8000` on the
+   laptop for easy debugging; on prod, no port mapping at all. Mounts
+   `./app/data/` for the SQLite file.
 
 Evolution API's webhook target is the internal hostname
 `http://app:8000/webhook/<token>` — this call stays inside the Docker bridge network.
 
 Local and prod use the same `docker-compose.yml`. A small `docker-compose.prod.yml`
-override adds `restart: always` and removes the `127.0.0.1:8000` mapping on `app`.
+override adds `restart: always` and removes all published ports — specified in
+[DEPLOY.md](DEPLOY.md).
 
 ---
 
@@ -227,8 +231,8 @@ EVOLUTION_API_KEY=...                 # admin key, generated at first start
 EVOLUTION_BASE_URL=http://evolution:8080
 EVOLUTION_INSTANCE_NAME=shopping
 
-# Allowed WhatsApp numbers (E.164 format, comma-separated)
-ALLOWED_NUMBERS=+41791234567,+41797654321
+# Allowed WhatsApp numbers (digits only, no '+', comma-separated)
+ALLOWED_NUMBERS=41791234567,41797654321
 
 # AI
 GEMINI_API_KEY=...
@@ -245,23 +249,13 @@ The app rejects any request whose path token doesn't match.
 
 ## Local → Production Migration
 
-Differences for Hetzner:
+Superseded by [DEPLOY.md](DEPLOY.md), which targets OVHcloud (VPS-1, Debian 12
+with Docker preinstalled) and covers hardening, git-pull deploys, one-time QR
+pairing over an SSH tunnel, and nightly backups.
 
-1. `docker-compose.prod.yml` overrides:
-   - `restart: always` on all services
-   - Drops the `127.0.0.1:8000` mapping on `app` (no host port at all)
-   - Evolution API has no host port either (after initial QR pairing is done)
-2. Hetzner Firewall: only port 22 (SSH) open inbound. Nothing else is needed —
-   neither container is reachable from the public internet, so there is no public
-   attack surface beyond SSH.
-3. Backups: nightly cron on the VPS uploads `shopping.db` to a Hetzner Storage Box
-   (or any S3-compatible bucket) via `rclone`. Retain ~14 daily copies.
-
-For the initial WA pairing on the VPS, temporarily publish the Evolution port to
-`127.0.0.1:8080` and SSH-tunnel from your laptop (`ssh -L 8080:localhost:8080 ...`),
-scan the QR in your local browser, then remove the publish.
-
-No application code changes are needed between environments.
+The invariant stands: **no application code changes between environments** —
+prod is the same compose stack plus a small override file (`restart: always`,
+no published ports).
 
 ---
 
@@ -284,12 +278,13 @@ No application code changes are needed between environments.
 
 ### Phase 2 — Polish
 - [ ] Deduplication: if item already on list, update quantity instead of duplicating
-- [ ] Error handling: unrecognised message → friendly reply, no DB change
+- [x] Error handling: unrecognised message → friendly reply, no DB change
 - [ ] Simple logging (timestamps, sender, action — not full message text)
+      *(partial: timestamps + sender logged; per-action logging still to do)*
 
 ### Phase 3 — Production
 - [ ] `docker-compose.prod.yml` (no host ports on either container, `restart: always`)
-- [ ] Deploy to Hetzner CX11 (~4 CHF/month), firewall = SSH only
+- [ ] Deploy to OVHcloud VPS-1 (~6 CHF/month), firewall = SSH only (see DEPLOY.md)
 - [ ] Initial WA pairing via SSH local-forward of port 8080
 - [ ] Set Google Cloud billing budget alert + hard cap at 5 CHF
 - [ ] Nightly `rclone` backup of `shopping.db` to off-server storage
@@ -306,10 +301,10 @@ No application code changes are needed between environments.
 
 | Item                              | Cost          |
 |-----------------------------------|---------------|
-| Hetzner CX11 VPS                  | ~4 CHF        |
+| OVHcloud VPS-1 (1-year prepaid)   | ~6 CHF        |
 | Google Gemini Flash API (est.)    | ~0 CHF (free tier) |
 | Domain (optional, amortised)      | ~1 CHF        |
-| **Total**                         | **~5 CHF**    |
+| **Total**                         | **~7 CHF**    |
 
 AI costs are essentially zero at household message volumes on Gemini's free tier.
 The hard billing cap in Google Cloud provides the safety net if volume spikes.
