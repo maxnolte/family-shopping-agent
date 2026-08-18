@@ -313,11 +313,10 @@ no published ports).
 
 ## Quality Backlog
 
-From a review pass (2026-08), ordered by impact. Accepted trade-offs that
-came out of the same review (blocking calls in async handlers, in-memory
-state, no monitoring stack) are documented in the README's
-[Design decisions](README.md#design-decisions) rather than listed here — they
-are decisions, not debt.
+From a review pass (2026-08), ordered by impact. Accepted trade-offs from
+the same review (blocking calls in async handlers, in-memory state, no
+monitoring stack) are documented in the README's
+[Design decisions](README.md#design-decisions).
 
 ### Evaluation harness (highest impact)
 
