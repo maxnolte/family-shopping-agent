@@ -8,7 +8,17 @@ locally and on a VPS.
 
 See [PLAN.md](PLAN.md) for the full architecture and roadmap.
 
+<p align="center">
+  <img src="docs/whatsapp-demo.png" width="300"
+       alt="WhatsApp chat with the bot: items added in English and German, the list requested, and an item removed by writing 'I bought pasta on the way home'">
+</p>
+
 ## How it works
+
+<p align="center">
+  <img src="docs/architecture.drawio.svg" width="574"
+       alt="Architecture: household members message WhatsApp; Evolution API bridges it to the FastAPI app over an internal Docker network; the app calls Gemini and stores the list in SQLite; all external connections are outbound">
+</p>
 
 Four services on a private Docker network:
 
