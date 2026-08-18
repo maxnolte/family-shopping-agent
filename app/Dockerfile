@@ -1,4 +1,6 @@
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
+# Builder and runtime Python versions must match: the venv is built against
+# this interpreter but executed by the runtime image's.
+FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -18,6 +20,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 
 FROM python:3.14-slim-bookworm
+
+# The app runs from the uv-built venv; the image's own pip is dead weight and
+# its vendored deps (msgpack et al.) show up in vulnerability scans.
+RUN python -m pip uninstall -y pip
 
 WORKDIR /app
 COPY --from=builder /app /app
