@@ -1,4 +1,7 @@
-# WhatsApp Shopping List Agent — Plan & Architecture
+# WhatsApp Shopping List Agent — Design & Architecture
+
+> The original design document, kept up to date as decisions land. Setup,
+> usage and deployment live in [README.md](README.md).
 
 ## Overview
 
@@ -35,29 +38,30 @@ later on a small VPS.
 
 ---
 
-## AI API Choice: Google Gemini Flash
+## Decision record: AI provider
 
-**Why Gemini Flash:**
+**Decision:** Google Gemini Flash (`gemini-2.5-flash` via the official
+`google-genai` SDK, structured JSON output).
 
-- Free tier: 1,500 requests/day and 1M tokens/day — almost certainly enough for a
-  household shopping list (realistic: < 100 messages/day)
-- If you exceed the free tier: ~$0.075 / 1M input tokens → for 3,000 messages/month
-  at ~200 tokens each ≈ $0.05/month, well inside the 5 CHF cap
-- Google Cloud has a **hard billing budget cap**: set it to 5 CHF and the project's
-  API calls stop rather than overspend
-- Simple REST API, official Python SDK (`google-genai`)
+**Considered:** Mistral (mistral-small / mistral-nemo); Claude Haiku via the
+Anthropic API.
 
-**Alternative if preferred:**
+**Rationale:**
 
-- **Mistral (mistral-small or mistral-nemo):** monthly spending limits in their dashboard;
-  similar pricing. Good if you already have a Mistral account.
-- **Claude Haiku via Anthropic API:** cheapest Anthropic model; no built-in hard cap but
-  usage limits can be set in the Anthropic Console. About $0.08 / 1M input tokens.
-- **Claude.ai Pro subscription:** does not grant API access — the API is billed separately
-  via console.anthropic.com.
+- Free tier of 1,500 requests/day and 1M tokens/day — orders of magnitude
+  above household volume (realistic: < 100 messages/day)
+- Cost beyond the free tier is negligible: ~$0.075 / 1M input tokens → 3,000
+  messages/month at ~200 tokens each ≈ $0.05/month, well inside the 5 CHF cap
+- Google Cloud supports a **hard billing budget cap**: set it to 5 CHF and the
+  project's API calls stop rather than overspend. Of the candidates, only
+  Google offered a true hard stop (Mistral: dashboard spending limits; Claude:
+  console usage limits, no built-in hard cap)
 
-The AI call structure is abstracted behind an interface, so swapping providers is
-straightforward.
+**Revisit if:** free-tier terms change, or Phase 4 (image parsing) calls for a
+different vision model.
+
+The provider is isolated behind `ai_parser.py`, so swapping is a one-module
+change — the rest of the app sees only a list of typed operations.
 
 ---
 
@@ -169,7 +173,9 @@ Hard delete on remove: simpler than soft-delete, and history isn't a requirement
 shopping-agent/
 ├── PLAN.md                      ← this file
 ├── README.md                    ← setup, pairing, usage, VPS deployment
+├── docs/                        ← demo screenshot, architecture diagram (draw.io SVG)
 ├── LICENSE                      ← MIT
+├── .pre-commit-config.yaml      ← ruff format + lint on every commit
 ├── .env.example                 ← template for secrets
 ├── docker-compose.yml           ← full local stack (4 services)
 ├── docker-compose.prod.yml      ← production overrides (see README.md)
