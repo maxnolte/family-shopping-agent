@@ -109,7 +109,7 @@ def test_clear_confirmation_is_per_sender(clean_state):
     run(ME, "add bread")
     run(ME, "clear the list")
 
-    # The second user's "yes" has no pending clear -> falls through to the AI (fallback).
+    # The second user's "yes" has no pending clear -> falls through to the AI.
     reply = run(SECOND_USER, "yes")
     assert reply == shopping.FALLBACK_REPLY
     assert items() == {("bread", None, None)}

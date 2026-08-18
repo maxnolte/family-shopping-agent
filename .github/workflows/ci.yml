@@ -45,6 +45,15 @@ jobs:
       - name: Build Docker image
         run: docker build -t shopping-agent:ci .
 
+      # A build alone doesn't prove the image runs (e.g. builder/runtime
+      # Python mismatch): the app must import inside the built image.
+      - name: Image smoke test
+        run: |
+          docker run --rm -e DB_PATH=/tmp/t.db -e GEMINI_API_KEY=x \
+            -e WEBHOOK_TOKEN=x -e ALLOWED_NUMBERS=1 -e EVOLUTION_BASE_URL=http://x \
+            -e EVOLUTION_API_KEY=x -e EVOLUTION_INSTANCE_NAME=x \
+            shopping-agent:ci python -c "import shopping_agent.main"
+
       - name: Trivy — scan image (fail on HIGH/CRITICAL, fixed only)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
