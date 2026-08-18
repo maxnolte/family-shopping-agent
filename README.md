@@ -1,4 +1,4 @@
-# Shopping Agent
+# Family Shopping (List) Agent
 
 [![CI](https://github.com/maxnolte/family-shopping-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/maxnolte/family-shopping-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -7,7 +7,7 @@
 
 A self-hosted WhatsApp agent that turns natural-language messages —
 "add milk and 2 kg potatoes", "brauchen noch Mehl", "I bought pasta on the
-way home" — into shopping-list operations via LLM structured output.
+way home" — into shopping-list operations via LLM structured output for a small household.
 
 <p align="center">
   <img src="docs/whatsapp-demo.png" width="300"
