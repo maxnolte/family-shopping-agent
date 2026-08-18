@@ -38,6 +38,8 @@ internet: Evolution's connection to WhatsApp is outbound.
 - Docker + Docker Compose v2.24+ (the prod override uses `!override`)
 - A dedicated WhatsApp account on a phone you control (for QR pairing)
 - A [Google AI Studio](https://aistudio.google.com/apikey) API key for Gemini
+- For production: a Linux server or VPS (tested on an OVHcloud VPS,
+  Debian 12); running locally works without one
 
 ## Running locally (Linux / WSL)
 
@@ -208,7 +210,8 @@ The system is sized for a small private household:
 
 ## Deploying to a VPS
 
-Any small Debian-based VPS with Docker works (tested on Debian 12): clone
+Any small Debian-based server or VPS with Docker works (tested on an
+OVHcloud VPS running Debian 12): clone
 the repo over a read-only deploy key, copy `.env` once, and run the same
 Compose stack with a small production override. Deploys are
 `git pull && docker compose up -d --build`, wrapped in
