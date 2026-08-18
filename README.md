@@ -33,45 +33,6 @@ Incoming messages flow `WhatsApp → evolution → POST /webhook/<token> → app
 entirely inside the Docker network. Nothing needs to be reachable from the
 internet: Evolution's connection to WhatsApp is outbound.
 
-## Design decisions
-
-The system is sized for a small private household:
-
-- **Zero ingress.** Evolution connects *outbound* to WhatsApp and the app
-  calls *outbound* to Gemini, so no container needs a public port. Production
-  removes all port publishes; the only thing listening on the server is SSH.
-  Admin access to the internal APIs goes through an SSH tunnel.
-
-- **Webhook auth is a secret URL path, compared in constant time.** Evolution
-  supports only static webhook URLs, so the shared secret lives in the path
-  (`/webhook/<token>`), checked with `secrets.compare_digest`. To keep the
-  secret out of logs, uvicorn runs with `--no-access-log`; the app logs its
-  own structured lines (timestamp, sender, action) and never message text.
-
-- **SQLite over a database server for the app's data.** The shopping list is
-  one table, written by one process, a few dozen times a day. A single file
-  on a bind mount makes backup a copy (via SQLite's online-backup API) and
-  restore a file move. Postgres runs in the stack only because Evolution
-  requires it.
-
-- **Deploys are `git pull` over SSH, not a pipeline.** For a two-user app,
-  registries and CD add moving parts without value. CI still gates `main`
-  (lint, tests, SAST, dependency and image CVE scans, an image smoke test);
-  `deploy.sh` is the stable interface, and if deploys ever become frequent, a
-  GitHub Action can SSH in and run that same script.
-
-- **Version-pinned images, no auto-updaters.** Dependabot proposes bumps as
-  PRs; nothing updates itself in production.
-
-- **The WhatsApp session is deliberately not backed up.** Re-pairing takes
-  five minutes with a QR code, and restored Baileys sessions are a known
-  source of flaky disconnects.
-
-- **Blocking calls inside async handlers are accepted.** Sync SQLModel
-  sessions and a per-request HTTP client are fine at this volume; the escape
-  hatches (aiosqlite, a shared client) are known and deliberately untaken
-  until load justifies them.
-
 ## Prerequisites
 
 - Docker + Docker Compose v2.24+ (the prod override uses `!override`)
@@ -211,14 +172,47 @@ CI (`.github/workflows/ci.yml`) runs ruff, the tests, bandit, pip-audit, a
 package build, a Docker build and a trivy image scan on every push.
 Dependabot (`.github/dependabot.yml`) opens weekly dependency-bump PRs.
 
+## Design decisions
+
+The system is sized for a small private household:
+
+- **Zero ingress.** Evolution connects *outbound* to WhatsApp and the app
+  calls *outbound* to Gemini, so no container needs a public port. Production
+  removes all port publishes; the only thing listening on the server is SSH.
+  Admin access to the internal APIs goes through an SSH tunnel.
+
+- **Webhook auth is a secret URL path, compared in constant time.** Evolution
+  supports only static webhook URLs, so the shared secret lives in the path
+  (`/webhook/<token>`), checked with `secrets.compare_digest`. To keep the
+  secret out of logs, uvicorn runs with `--no-access-log`; the app logs its
+  own structured lines (timestamp, sender, action) and never message text.
+
+- **SQLite over a database server for the app's data.** The shopping list is
+  one table, written by one process, a few dozen times a day. A single file
+  on a bind mount makes backup a copy (via SQLite's online-backup API) and
+  restore a file move. Postgres runs in the stack only because Evolution
+  requires it.
+
+- **Deploys are `git pull` over SSH.** CI gates `main` (lint, tests, SAST,
+  dependency and image CVE scans, an image smoke test); `deploy.sh` is the
+  whole pipeline.
+
+- **Version-pinned images, no auto-updaters.** Dependabot proposes bumps as
+  PRs; nothing updates itself in production.
+
+- **The WhatsApp session is not backed up.** Re-pairing takes five minutes,
+  and restored Baileys sessions are a known source of flaky disconnects.
+
+- **Blocking calls inside async handlers.** Sync SQLModel sessions and a
+  per-request HTTP client are fine at this volume.
+
 ## Deploying to a VPS
 
-Any small Debian-based VPS with Docker works (tested on Debian 12). The
-deployment model is deliberately simple: clone the repo over a read-only
-deploy key, copy `.env` once, and run the same Compose stack with a small
-production override. Deploys are `git pull && docker compose up -d --build`,
-wrapped in [`deploy.sh`](deploy.sh). No CI/CD, no registry, no reverse proxy
-— nothing on this stack needs to be reachable from the internet.
+Any small Debian-based VPS with Docker works (tested on Debian 12): clone
+the repo over a read-only deploy key, copy `.env` once, and run the same
+Compose stack with a small production override. Deploys are
+`git pull && docker compose up -d --build`, wrapped in
+[`deploy.sh`](deploy.sh).
 
 The production override, [`docker-compose.prod.yml`](docker-compose.prod.yml),
 changes two things: `restart: always` on all services, and
@@ -251,9 +245,7 @@ Host vps
 ### 2. Get the code and secrets onto the server
 
 On the server, generate a dedicated keypair and add the public half as a
-**read-only deploy key** on your Git host (GitHub: repo → Settings → Deploy
-keys). A deploy key beats a personal key on a server: the blast radius of a
-leak is one repo, read-only.
+**read-only deploy key** (GitHub: repo → Settings → Deploy keys).
 
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_deploy -N ""
@@ -275,7 +267,7 @@ Verify with `ssh -T git@github.com`, then clone:
 git clone git@github.com:<owner>/<repo>.git ~/shopping-agent
 ```
 
-Secrets never travel through git. From your local machine:
+Copy `.env` over from your local machine (it is not in git):
 
 ```bash
 scp .env vps:shopping-agent/.env
@@ -343,9 +335,9 @@ Redis and the WhatsApp session are untouched.
 ### 6. Backups
 
 Two things hold state: the shopping list (`app/data/shopping.db`) and the
-WhatsApp session (`evolution_instances` volume + Postgres). The list gets
-real backups; the session is cheap to recreate (re-pair, 5 minutes), so it
-isn't worth the ceremony.
+WhatsApp session (`evolution_instances` volume + Postgres). The list is
+backed up nightly; the session is cheap to recreate (re-pair, 5 minutes)
+and is not.
 
 Nightly cron on the server (`crontab -e`):
 
@@ -369,9 +361,8 @@ any S3-compatible bucket works.
 - **Logs**: `ssh vps 'cd shopping-agent && docker compose logs -f app'`.
   Container logs are capped (10 MB × 3 files per service) so they can't fill
   the disk.
-- **Health**: a household bot going quiet is user-visible within hours;
-  monitoring infra is overkill. A free [healthchecks.io](https://healthchecks.io/)
-  ping in the backup cron makes a fine safety net if you want one.
+- **Health**: optionally, a free [healthchecks.io](https://healthchecks.io/)
+  ping in the backup cron.
 
 ## License
 
