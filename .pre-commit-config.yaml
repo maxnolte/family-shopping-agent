@@ -1,6 +1,10 @@
 # Pre-commit hooks: same ruff pair CI enforces (.github/workflows/ci.yml).
 # One-time setup: uvx pre-commit install
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: no-commit-to-branch   # blocks direct commits to main/master
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.3
     hooks:
