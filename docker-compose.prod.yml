@@ -1,4 +1,4 @@
-# Production overrides (OVHcloud VPS). See DEPLOY.md.
+# Production overrides (VPS). See README.md § Deploying to a VPS.
 #
 # Usage:
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
@@ -20,7 +20,7 @@ services:
 
   evolution:
     restart: always
-    ports: !override []
+ #   ports: !override []
 
   app:
     restart: always

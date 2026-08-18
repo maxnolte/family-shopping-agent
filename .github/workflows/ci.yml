@@ -1,4 +1,4 @@
-# Quality gates for every push/PR. Deploys stay manual (DEPLOY.md §2);
+# Quality gates for every push/PR. Deploys stay manual (README.md § Deploying updates);
 # this pipeline only guarantees that main always passed the checks.
 name: CI
 
