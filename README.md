@@ -1,12 +1,21 @@
 # Shopping Agent
 
-A WhatsApp-based shared shopping list for a household. Members send
-natural-language messages ("add milk and 2 kg potatoes") to a dedicated
-WhatsApp number; a FastAPI app parses them with Gemini Flash and keeps the
-list in SQLite. The whole thing runs in Docker Compose — the same stack
-locally and on a VPS.
+[![CI](https://github.com/maxnolte/family-shopping-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/maxnolte/family-shopping-agent/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 
-See [PLAN.md](PLAN.md) for the full architecture and roadmap.
+A production-deployed WhatsApp bot that turns natural-language messages —
+"add milk and 2 kg potatoes", "brauchen noch Mehl", "I bought pasta on the
+way home" — into shopping-list operations via LLM structured output. One
+Docker Compose stack serves both dev and prod; in production nothing is
+published, so the server's public attack surface is SSH and nothing else.
+It is also built deliberately small: SQLite instead of a database server for
+the app's data, in-memory state wherever a restart costs nothing, no reverse
+proxy because nothing needs ingress. What was left out, and why, is half the
+point — see [Design decisions](#design-decisions).
+
+See [PLAN.md](PLAN.md) for the original design doc and roadmap.
 
 <p align="center">
   <img src="docs/whatsapp-demo.png" width="300"
@@ -31,6 +40,59 @@ Four services on a private Docker network:
 Incoming messages flow `WhatsApp → evolution → POST /webhook/<token> → app`,
 entirely inside the Docker network. Nothing needs to be reachable from the
 internet: Evolution's connection to WhatsApp is outbound.
+
+## Design decisions
+
+The system is sized for its real load — a household, tens of messages a day —
+and every piece of infrastructure had to earn its place. The decisions that
+shaped it:
+
+- **Zero ingress.** Evolution connects *outbound* to WhatsApp and the app
+  calls *outbound* to Gemini, so no container needs a public port. Production
+  removes all port publishes; the only thing listening on the server is SSH.
+  Admin access to the internal APIs goes through an SSH tunnel.
+
+- **Webhook auth is a secret URL path, compared in constant time.** Evolution
+  supports only static webhook URLs, so the shared secret lives in the path
+  (`/webhook/<token>`), checked with `secrets.compare_digest`. To keep the
+  secret out of logs, uvicorn runs with `--no-access-log`; the app logs its
+  own structured lines (timestamp, sender, action) and never message text.
+
+- **SQLite over a database server for the app's data.** The shopping list is
+  one table, written by one process, a few dozen times a day. A single file
+  on a bind mount makes backup a copy (via SQLite's online-backup API) and
+  restore a file move. Postgres runs in the stack only because Evolution
+  requires it.
+
+- **In-memory state wherever a restart costs nothing.** The rate limiter and
+  the two-step clear-list confirmation live in process memory. After a
+  restart, the worst case is a user repeating one message — not worth a
+  persistence layer.
+
+- **Deploys are `git pull` over SSH, not a pipeline.** For a two-user app,
+  registries and CD add moving parts without value. CI still gates `main`
+  (lint, tests, SAST, dependency and image CVE scans, an image smoke test);
+  `deploy.sh` is the stable interface, and if deploys ever become frequent, a
+  GitHub Action can SSH in and run that same script.
+
+- **Version-pinned images, no auto-updaters.** Dependabot proposes bumps as
+  PRs; nothing updates itself in production. The CI image smoke test exists
+  because a base-image bump once produced an image that built fine but
+  couldn't run.
+
+- **The WhatsApp session is deliberately not backed up.** Re-pairing takes
+  five minutes with a QR code, and restored Baileys sessions are a known
+  source of flaky disconnects. The shopping list — the actual data — gets the
+  real backups.
+
+- **Blocking calls inside async handlers are accepted.** Sync SQLModel
+  sessions and a per-request HTTP client are fine at this volume; the escape
+  hatches (aiosqlite, a shared client) are known and deliberately untaken
+  until load justifies them.
+
+- **No monitoring stack.** A silent household bot is user-visible within
+  hours. The right-sized safety net is a ping to a free uptime service from
+  the backup cron, not a metrics pipeline.
 
 ## Prerequisites
 

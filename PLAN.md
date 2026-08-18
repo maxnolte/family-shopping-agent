@@ -1,4 +1,7 @@
-# WhatsApp Shopping List Agent — Plan & Architecture
+# WhatsApp Shopping List Agent — Design & Architecture
+
+> The original design document, kept up to date as decisions land. Setup,
+> usage and deployment live in [README.md](README.md).
 
 ## Overview
 
@@ -35,29 +38,30 @@ later on a small VPS.
 
 ---
 
-## AI API Choice: Google Gemini Flash
+## Decision record: AI provider
 
-**Why Gemini Flash:**
+**Decision:** Google Gemini Flash (`gemini-2.5-flash` via the official
+`google-genai` SDK, structured JSON output).
 
-- Free tier: 1,500 requests/day and 1M tokens/day — almost certainly enough for a
-  household shopping list (realistic: < 100 messages/day)
-- If you exceed the free tier: ~$0.075 / 1M input tokens → for 3,000 messages/month
-  at ~200 tokens each ≈ $0.05/month, well inside the 5 CHF cap
-- Google Cloud has a **hard billing budget cap**: set it to 5 CHF and the project's
-  API calls stop rather than overspend
-- Simple REST API, official Python SDK (`google-genai`)
+**Considered:** Mistral (mistral-small / mistral-nemo); Claude Haiku via the
+Anthropic API.
 
-**Alternative if preferred:**
+**Rationale:**
 
-- **Mistral (mistral-small or mistral-nemo):** monthly spending limits in their dashboard;
-  similar pricing. Good if you already have a Mistral account.
-- **Claude Haiku via Anthropic API:** cheapest Anthropic model; no built-in hard cap but
-  usage limits can be set in the Anthropic Console. About $0.08 / 1M input tokens.
-- **Claude.ai Pro subscription:** does not grant API access — the API is billed separately
-  via console.anthropic.com.
+- Free tier of 1,500 requests/day and 1M tokens/day — orders of magnitude
+  above household volume (realistic: < 100 messages/day)
+- Cost beyond the free tier is negligible: ~$0.075 / 1M input tokens → 3,000
+  messages/month at ~200 tokens each ≈ $0.05/month, well inside the 5 CHF cap
+- Google Cloud supports a **hard billing budget cap**: set it to 5 CHF and the
+  project's API calls stop rather than overspend. Of the candidates, only
+  Google offered a true hard stop (Mistral: dashboard spending limits; Claude:
+  console usage limits, no built-in hard cap)
 
-The AI call structure is abstracted behind an interface, so swapping providers is
-straightforward.
+**Revisit if:** free-tier terms change, or Phase 4 (image parsing) calls for a
+different vision model.
+
+The provider is isolated behind `ai_parser.py`, so swapping is a one-module
+change — the rest of the app sees only a list of typed operations.
 
 ---
 
@@ -169,7 +173,9 @@ Hard delete on remove: simpler than soft-delete, and history isn't a requirement
 shopping-agent/
 ├── PLAN.md                      ← this file
 ├── README.md                    ← setup, pairing, usage, VPS deployment
+├── docs/                        ← demo screenshot, architecture diagram (draw.io SVG)
 ├── LICENSE                      ← MIT
+├── .pre-commit-config.yaml      ← ruff format + lint on every commit
 ├── .env.example                 ← template for secrets
 ├── docker-compose.yml           ← full local stack (4 services)
 ├── docker-compose.prod.yml      ← production overrides (see README.md)
@@ -292,13 +298,60 @@ no published ports).
 - [x] Initial WA pairing on the server (terminal QR via `qrencode`)
 - [ ] Set Google Cloud billing budget alert + hard cap at 5 CHF
 - [ ] Nightly `rclone` backup of `shopping.db` to off-server storage
-      *(`backup.sh` ready; cron entry on the VPS still to add)*
+      *(`backup.sh` ready; verify the cron entry and configure an rclone
+      remote named `backup` — until then, backups live on the same disk as
+      the data)*
+- [ ] Test a restore once: open a snapshot with `sqlite3`, check row counts
 
 ### Phase 4 — Image support (future)
 - [ ] Receive image messages from Evolution API
 - [ ] Send image to Gemini Vision: extract item names from receipts or handwritten lists
 - [ ] Same add/remove pipeline as text
 - [ ] Note: images are sent to Google — fine for shopping lists but worth being aware of
+
+---
+
+## Quality Backlog
+
+From a review pass (2026-08), ordered by impact. Accepted trade-offs that
+came out of the same review (blocking calls in async handlers, in-memory
+state, no monitoring stack) are documented in the README's
+[Design decisions](README.md#design-decisions) rather than listed here — they
+are decisions, not debt.
+
+### Evaluation harness (highest impact)
+
+The intent parser — the system prompt plus the Gemini call — has no tests and
+no evaluation today: the test suite stubs the model entirely. A prompt change
+that breaks `remove milk` would go unnoticed until a user hits it.
+
+- [ ] Golden set: ~30 messages with expected operations — multilingual,
+      ambiguous, small talk, multi-op, quantity updates, remove-by-meaning
+- [ ] Eval script (e.g. `app/evals/`): runs the golden set against the live
+      model, reports per-case pass/fail and overall accuracy
+- [ ] CI integration: manual-trigger (`workflow_dispatch`) job, free at
+      Gemini free-tier volumes; run before merging prompt changes
+- [ ] Token/cost logging: record usage metadata per request for a measured
+      monthly cost figure
+
+### Engineering polish
+
+- [ ] Type checking in CI: the code is fully annotated but nothing enforces
+      it — add `pyright` (or `mypy --strict`); optionally a coverage report
+- [ ] Real `/health`: currently returns `{"ok": true}` unconditionally; make
+      it touch the DB (optionally Evolution's API) and wire it into a compose
+      `healthcheck` for the app service
+- [ ] Distinguish LLM outage from unparseable input: `parse_message` returns
+      `[]` on any exception, so a Gemini outage replies "I didn't understand
+      that" — surface an explicit error state, reply differently, and
+      consider one retry with backoff
+- [ ] Direct unit tests for the components the e2e suite skips: rate limiter
+      (token refill math), pending-clear TTL expiry (monkeypatch
+      `time.monotonic`), webhook rejection paths (bad token, non-whitelisted
+      sender, group chat, `fromMe`)
+- [ ] Releases: CI builds a wheel that goes nowhere — tag `v0.1.0` and attach
+      the wheel to a GitHub Release with a short changelog, or drop the build
+      step
 
 ---
 
