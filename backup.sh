@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Nightly backup of the shopping list. See DEPLOY.md §3.
+# Nightly backup of the shopping list. See README.md § Backups.
 # Cron: 15 3 * * * $HOME/shopping-agent/backup.sh
 #
 # Uses SQLite's online-backup API (safe while the app is running) via the app
 # container's Python, so the host needs no sqlite3 install. Off-server copy
 # happens only if an rclone remote named "backup" is configured; otherwise you
-# still get a local, timestamped snapshot.
+# still get a local, timestamped snapshot. Retention on both: 14 days.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -28,7 +28,7 @@ PY
 
 mv app/data/shopping-backup.db "$BACKUP_DIR/shopping-$STAMP.db"
 
-# Off-server copy + remote retention (optional; see DEPLOY.md §3).
+# Off-server copy + remote retention (optional; see README.md § Backups).
 if command -v rclone >/dev/null && rclone listremotes | grep -q '^backup:'; then
     rclone copy "$BACKUP_DIR/shopping-$STAMP.db" backup:shopping-agent/
     rclone delete --min-age "${RETENTION_DAYS}d" backup:shopping-agent/ || true

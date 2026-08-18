@@ -2,10 +2,10 @@
 
 ## Overview
 
-A WhatsApp-based shopping list agent for two users (you + wife). Messages sent to a
+A WhatsApp-based shopping list agent for a small household. Messages sent to a
 dedicated WhatsApp number are parsed by an AI model to add or remove items from a
-shared shopping list. The system runs fully in Docker, first on your laptop, later on a
-Hetzner cloud server.
+shared shopping list. The system runs fully in Docker, first on a local machine,
+later on a small VPS.
 
 ---
 
@@ -14,7 +14,7 @@ Hetzner cloud server.
 - Send natural-language messages to a WhatsApp number to manage a shared shopping list
 - AI parses messages: extract items to add or remove, quantities, and units
 - Hard monthly AI API cost cap of ~5 CHF
-- Simple and portable: Docker Compose on laptop → same stack deployed to Hetzner
+- Simple and portable: Docker Compose locally → same stack deployed to a VPS
 - Python 3 + uv for package management
 - Extensible: text messages first, images (receipt scanning) later
 
@@ -31,7 +31,7 @@ Hetzner cloud server.
 | Database         | SQLite (local file, via SQLModel)   |
 | AI parsing       | Google Gemini Flash (see below)     |
 | Containerisation | Docker + Docker Compose             |
-| Hosting (prod)   | OVHcloud VPS-1 (see [DEPLOY.md](DEPLOY.md)) |
+| Hosting (prod)   | Any small VPS (see [README.md](README.md)) |
 
 ---
 
@@ -64,7 +64,7 @@ straightforward.
 ## Architecture
 
 ```
-  [You / Wife]
+  [Household members]
        │
        │  WhatsApp messages
        ▼
@@ -94,7 +94,7 @@ straightforward.
 
 ### Message flow (example: add)
 
-1. Wife sends: `"add 2 kg potatoes and some milk"` to the WA number
+1. A user sends: `"add 2 kg potatoes and some milk"` to the WA number
 2. Evolution API POSTs to `https://<host>/webhook/<secret-token>`
 3. App verifies the path token, then verifies the sender is whitelisted
 4. App reads the current list from SQLite and calls Gemini Flash with:
@@ -168,12 +168,11 @@ Hard delete on remove: simpler than soft-delete, and history isn't a requirement
 ```
 shopping-agent/
 ├── PLAN.md                      ← this file
-├── DEPLOY.md                    ← OVHcloud deployment & devops guide
-├── README.md                    ← setup, pairing, day-to-day usage
+├── README.md                    ← setup, pairing, usage, VPS deployment
 ├── LICENSE                      ← MIT
 ├── .env.example                 ← template for secrets
 ├── docker-compose.yml           ← full local stack (4 services)
-├── docker-compose.prod.yml      ← production overrides (see DEPLOY.md)
+├── docker-compose.prod.yml      ← production overrides (see README.md)
 ├── deploy.sh                    ← git pull + compose up (run on the VPS)
 ├── backup.sh                    ← nightly SQLite backup (cron on the VPS)
 ├── .github/
@@ -213,8 +212,8 @@ servers, which is initiated *outbound* from inside Evolution.
 2. **`evolution`** — the `evoapicloud/evolution-api` image (version-pinned).
    Published to `127.0.0.1:8080` for the initial QR-code pairing only.
 
-3. **`app`** — Python FastAPI container. Published to `127.0.0.1:8000` on the
-   laptop for easy debugging; on prod, no port mapping at all. Mounts
+3. **`app`** — Python FastAPI container. Published to `127.0.0.1:8000`
+   locally for easy debugging; on prod, no port mapping at all. Mounts
    `./app/data/` for the SQLite file.
 
 Evolution API's webhook target is the internal hostname
@@ -222,7 +221,7 @@ Evolution API's webhook target is the internal hostname
 
 Local and prod use the same `docker-compose.yml`. A small `docker-compose.prod.yml`
 override adds `restart: always` and removes all published ports — specified in
-[DEPLOY.md](DEPLOY.md).
+[README.md](README.md).
 
 ---
 
@@ -255,9 +254,9 @@ The app rejects any request whose path token doesn't match.
 
 ## Local → Production Migration
 
-Superseded by [DEPLOY.md](DEPLOY.md), which targets OVHcloud (VPS-1, Debian 12
-with Docker preinstalled) and covers hardening, git-pull deploys, one-time QR
-pairing over an SSH tunnel, and nightly backups.
+Covered by [README.md](README.md) (§ Deploying to a VPS): server hardening,
+git-pull deploys over a read-only deploy key, one-time QR pairing on the
+server, and nightly backups.
 
 The invariant stands: **no application code changes between environments** —
 prod is the same compose stack plus a small override file (`restart: always`,
@@ -289,8 +288,8 @@ no published ports).
 
 ### Phase 3 — Production
 - [x] `docker-compose.prod.yml` (no host ports on any container, `restart: always`)
-- [ ] Deploy to OVHcloud VPS-1 (~6 CHF/month), firewall = SSH only (see DEPLOY.md)
-- [ ] Initial WA pairing via SSH local-forward of port 8080
+- [x] Deploy to a small VPS (~6 CHF/month), firewall = SSH only (see README.md)
+- [x] Initial WA pairing on the server (terminal QR via `qrencode`)
 - [ ] Set Google Cloud billing budget alert + hard cap at 5 CHF
 - [ ] Nightly `rclone` backup of `shopping.db` to off-server storage
       *(`backup.sh` ready; cron entry on the VPS still to add)*
@@ -307,7 +306,7 @@ no published ports).
 
 | Item                              | Cost          |
 |-----------------------------------|---------------|
-| OVHcloud VPS-1 (1-year prepaid)   | ~6 CHF        |
+| Small VPS (1-year prepaid)        | ~6 CHF        |
 | Google Gemini Flash API (est.)    | ~0 CHF (free tier) |
 | Domain (optional, amortised)      | ~1 CHF        |
 | **Total**                         | **~7 CHF**    |

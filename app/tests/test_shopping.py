@@ -11,7 +11,7 @@ from shopping_agent.db import get_session, init_db
 from shopping_agent.models import ShoppingItem
 
 ME = "41791234567"
-WIFE = "41797654321"
+SECOND_USER = "41797654321"
 
 
 @pytest.fixture(autouse=True)
@@ -46,7 +46,7 @@ def test_add_multiple_items(clean_state):
         Operation(action=Action.add, name="Milk"),
         Operation(action=Action.add, name="potatoes", quantity=2, unit="kg"),
     ]
-    reply = run(WIFE, "add milk and 2 kg potatoes")
+    reply = run(SECOND_USER, "add milk and 2 kg potatoes")
     assert reply == "✓ Added: milk, potatoes (2 kg)"
     assert items() == {("milk", None, None), ("potatoes", 2.0, "kg")}
 
@@ -54,7 +54,7 @@ def test_add_multiple_items(clean_state):
 def test_dedup_no_quantity_reports_already_on_list(clean_state):
     clean_state["add milk"] = [Operation(action=Action.add, name="milk")]
     run(ME, "add milk")
-    reply = run(WIFE, "add milk")
+    reply = run(SECOND_USER, "add milk")
     assert reply == "Already on the list: milk"
     assert items() == {("milk", None, None)}
 
@@ -67,7 +67,7 @@ def test_dedup_with_quantity_updates_in_place(clean_state):
         Operation(action=Action.add, name="Potatoes", quantity=3, unit="KG")
     ]
     run(ME, "add 2 kg potatoes")
-    reply = run(WIFE, "add 3 kg potatoes")
+    reply = run(SECOND_USER, "add 3 kg potatoes")
     assert reply == "✓ Updated: potatoes (3 kg)"
     assert items() == {("potatoes", 3.0, "kg")}
 
@@ -77,14 +77,14 @@ def test_list_and_remove(clean_state):
     run(ME, "add milk")
 
     clean_state["what's on the list"] = [Operation(action=Action.list)]
-    reply = run(WIFE, "what's on the list")
+    reply = run(SECOND_USER, "what's on the list")
     assert reply.startswith("🛒 Shopping list:")
     assert "milk" in reply
 
     with get_session() as s:
         milk_id = shopping.list_items(s)[0].id
     clean_state["remove milk"] = [Operation(action=Action.remove, item_id=milk_id)]
-    reply = run(WIFE, "remove milk")
+    reply = run(SECOND_USER, "remove milk")
     assert reply == "✓ Removed: milk"
     assert items() == set()
 
@@ -109,8 +109,8 @@ def test_clear_confirmation_is_per_sender(clean_state):
     run(ME, "add bread")
     run(ME, "clear the list")
 
-    # Wife's "yes" has no pending clear -> falls through to the AI (fallback).
-    reply = run(WIFE, "yes")
+    # The second user's "yes" has no pending clear -> falls through to the AI (fallback).
+    reply = run(SECOND_USER, "yes")
     assert reply == shopping.FALLBACK_REPLY
     assert items() == {("bread", None, None)}
 
@@ -133,7 +133,7 @@ def test_unrecognised_message_changes_nothing(clean_state):
     run(ME, "add milk")
     before = items()
 
-    reply = run(WIFE, "how are you?")
+    reply = run(SECOND_USER, "how are you?")
     assert reply == shopping.FALLBACK_REPLY
     assert items() == before
 
