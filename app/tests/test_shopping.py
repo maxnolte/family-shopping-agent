@@ -1,14 +1,15 @@
 """End-to-end tests of handle_message: real SQLite, stubbed Gemini."""
 
 import asyncio
+import json
 
 import pytest
-from sqlmodel import delete
+from sqlmodel import delete, select
 
 from shopping_agent import pending, shopping
 from shopping_agent.ai_parser import Action, Operation
 from shopping_agent.db import get_session, init_db
-from shopping_agent.models import ShoppingItem
+from shopping_agent.models import ItemEvent, Message, ShoppingItem
 
 ME = "41791234567"
 SECOND_USER = "41797654321"
@@ -20,6 +21,8 @@ def clean_state(monkeypatch):
     init_db()
     with get_session() as s:
         s.exec(delete(ShoppingItem))
+        s.exec(delete(ItemEvent))
+        s.exec(delete(Message))
         s.commit()
     pending._pending.clear()
 
@@ -33,7 +36,20 @@ def clean_state(monkeypatch):
 
 
 def run(sender: str, msg: str) -> str:
-    return asyncio.run(shopping.handle_message(sender, msg))
+    message_id = shopping.record_message(sender, msg)
+    return asyncio.run(shopping.handle_message(sender, msg, message_id))
+
+
+def events() -> list[tuple]:
+    with get_session() as s:
+        rows = s.exec(select(ItemEvent).order_by(ItemEvent.id)).all()
+        return [(e.action, e.item_name, e.quantity, e.unit, e.sender) for e in rows]
+
+
+def messages() -> list[tuple]:
+    with get_session() as s:
+        rows = s.exec(select(Message).order_by(Message.id)).all()
+        return [(m.text, m.status) for m in rows]
 
 
 def items() -> set[tuple]:
@@ -142,3 +158,89 @@ def test_clear_on_empty_list(clean_state):
     clean_state["clear the list"] = [Operation(action=Action.clear)]
     reply = run(ME, "clear the list")
     assert reply == "🛒 Your shopping list is already empty."
+
+
+# ─── History ───────────────────────────────────────────────────────────────
+
+
+def test_history_records_add_update_remove(clean_state):
+    clean_state["add 2 kg potatoes"] = [
+        Operation(action=Action.add, name="potatoes", quantity=2, unit="kg")
+    ]
+    clean_state["add 3 kg potatoes"] = [
+        Operation(action=Action.add, name="potatoes", quantity=3, unit="kg")
+    ]
+    run(ME, "add 2 kg potatoes")
+    run(SECOND_USER, "add 3 kg potatoes")
+    with get_session() as s:
+        potato_id = shopping.list_items(s)[0].id
+    clean_state["bought potatoes"] = [
+        Operation(action=Action.remove, item_id=potato_id)
+    ]
+    run(ME, "bought potatoes")
+
+    assert events() == [
+        ("add", "potatoes", 2.0, "kg", ME),
+        ("update", "potatoes", 3.0, "kg", SECOND_USER),
+        ("remove", "potatoes", 3.0, "kg", ME),
+    ]
+    assert [st for _, st in messages()] == ["ok", "ok", "ok"]
+
+
+def test_history_unchanged_add_writes_no_event(clean_state):
+    clean_state["add milk"] = [Operation(action=Action.add, name="milk")]
+    run(ME, "add milk")
+    run(ME, "add milk")
+    assert [e[0] for e in events()] == ["add"]
+
+
+def test_history_clear_writes_event_per_item(clean_state):
+    clean_state["add milk and bread"] = [
+        Operation(action=Action.add, name="milk"),
+        Operation(action=Action.add, name="bread"),
+    ]
+    clean_state["clear the list"] = [Operation(action=Action.clear)]
+    run(ME, "add milk and bread")
+    run(ME, "clear the list")
+    run(ME, "yes")
+
+    assert [(e[0], e[1]) for e in events()] == [
+        ("add", "milk"),
+        ("add", "bread"),
+        ("clear", "milk"),
+        ("clear", "bread"),
+    ]
+    assert messages() == [
+        ("add milk and bread", "ok"),
+        ("clear the list", "confirm_requested"),
+        ("yes", "cleared"),
+    ]
+
+
+def test_history_message_stores_reply_and_ops(clean_state):
+    clean_state["add milk"] = [Operation(action=Action.add, name="milk")]
+    run(ME, "add milk")
+    run(ME, "how are you?")
+
+    with get_session() as s:
+        ok, fallback = s.exec(select(Message).order_by(Message.id)).all()
+    assert ok.reply == "✓ Added: milk"
+    assert json.loads(ok.ops_json) == [
+        {
+            "action": "add",
+            "item_id": None,
+            "name": "milk",
+            "quantity": None,
+            "unit": None,
+        }
+    ]
+    assert (fallback.status, fallback.ops_json) == ("fallback", "[]")
+
+
+def test_history_events_link_to_message(clean_state):
+    clean_state["add milk"] = [Operation(action=Action.add, name="milk")]
+    run(ME, "add milk")
+    with get_session() as s:
+        msg = s.exec(select(Message)).one()
+        event = s.exec(select(ItemEvent)).one()
+    assert event.message_id == msg.id
