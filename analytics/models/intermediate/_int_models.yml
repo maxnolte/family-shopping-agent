@@ -1,0 +1,12 @@
+version: 2
+
+models:
+  - name: int_messages_sequenced
+    description: Messages ordered per member, with the gap to that member's previous message.
+    columns:
+      - name: message_id
+        data_tests: [unique, not_null]
+      - name: member_message_seq
+        description: 1 for a member's first message, 2 for the next, …
+      - name: minutes_since_previous
+        description: Null for a member's first message.

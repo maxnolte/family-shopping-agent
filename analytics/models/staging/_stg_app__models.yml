@@ -1,0 +1,15 @@
+version: 2
+
+models:
+  - name: stg_app__messages
+    description: One row per stored message, renamed and typed.
+    columns:
+      - name: message_id
+        data_tests: [unique, not_null]
+      - name: received_date
+        description: UTC date of receipt.
+      - name: op_count
+        description: Number of operations the parser returned; null when not parsed.
+      - name: is_unhandled
+        description: True when the bot could not act on the message.
+        data_tests: [not_null]

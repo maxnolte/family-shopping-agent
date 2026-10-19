@@ -62,3 +62,24 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+
+  # dbt project (analytics/) built on a synthetic fixture generated from the
+  # app's own models, so app schema changes that break analytics fail here.
+  analytics:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: analytics
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Build fixture database
+        working-directory: app
+        run: uv run python ../analytics/scripts/make_fixture.py ../analytics/data/shopping.db
+
+      - name: dbt build (seeds, models, tests)
+        run: |
+          cp members.example.csv seeds/members.csv
+          uv run dbt build

@@ -1,0 +1,13 @@
+version: 2
+
+models:
+  - name: dim_members
+    description: One row per member who has messaged the bot. No phone numbers.
+    columns:
+      - name: member_key
+        description: md5 of the sender number — join key for your fact tables.
+        data_tests: [unique, not_null]
+      - name: display_name
+        data_tests: [not_null]
+      - name: unhandled_rate
+        description: Share of messages the bot couldn't act on (0–1).
