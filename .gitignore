@@ -27,3 +27,13 @@ dist/
 
 # Docker
 docker-compose.override.yml
+
+# Analytics (dbt) — local data contains personal data
+analytics/data/*
+!analytics/data/.gitkeep
+analytics/target/
+analytics/logs/
+analytics/dbt_packages/
+analytics/seeds/members.csv
+*.duckdb
+.user.yml

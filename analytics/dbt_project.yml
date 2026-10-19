@@ -1,0 +1,30 @@
+name: shopping
+version: "1.0.0"
+profile: shopping
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: target
+clean-targets: [target, dbt_packages]
+
+# Layering convention:
+#   staging/       1:1 with a source table — rename, cast, light cleaning. Views.
+#   intermediate/  joins, window functions, business logic building blocks. Views.
+#   marts/         what you query: facts (fct_) and dimensions (dim_). Tables.
+models:
+  shopping:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table
+
+seeds:
+  shopping:
+    members:
+      +column_types:
+        sender_number: varchar
+        display_name: varchar
