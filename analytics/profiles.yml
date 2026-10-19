@@ -1,0 +1,16 @@
+# Kept in the project so `dbt` works from this directory without ~/.dbt.
+# DuckDB holds the built models; the app's SQLite file is attached read-only
+# as the `raw` catalog, so sources read it in place (no load step).
+shopping:
+  target: local
+  outputs:
+    local:
+      type: duckdb
+      path: target/shopping.duckdb
+      threads: 4
+      extensions: [sqlite]
+      attach:
+        - path: data/shopping.db
+          type: sqlite
+          alias: raw
+          read_only: true
