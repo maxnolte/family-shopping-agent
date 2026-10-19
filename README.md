@@ -144,6 +144,10 @@ From a whitelisted WhatsApp account, message the dedicated number:
 - `clear the list` → asks you to reply `yes` within 2 minutes to confirm
 
 The list lives in `app/data/shopping.db` (SQLite), persisted across restarts.
+The same file keeps an append-only history for analytics: `messages` (every
+message from a whitelisted sender, with the parsed operations, reply and
+outcome) and `item_events` (every add/update/remove/clear, written in the same
+transaction as the list change).
 
 Watch logs to debug:
 
@@ -188,6 +192,8 @@ The system is sized for a small private household:
   (`/webhook/<token>`), checked with `secrets.compare_digest`. To keep the
   secret out of logs, uvicorn runs with `--no-access-log`; the app logs its
   own structured lines (timestamp, sender, action) and never message text.
+  Message text is stored only in the SQLite history (`messages`), which never
+  leaves the server except as a backup or an explicit analytics pull.
 
 - **SQLite over a database server for the app's data.** The shopping list is
   one table, written by one process, a few dozen times a day. A single file

@@ -5,7 +5,7 @@ import secrets
 from fastapi import APIRouter, HTTPException, Request
 
 from . import ratelimit
-from .shopping import handle_message
+from .shopping import finish_message, handle_message, record_message
 from .whatsapp import send_text
 
 log = logging.getLogger("shopping-agent.webhook")
@@ -61,11 +61,13 @@ async def webhook(token: str, request: Request) -> dict[str, str | bool]:
         return {"ignored": "no-text"}
 
     log.info("message from %s", sender)
+    message_id = record_message(sender, text)
     try:
-        reply = await handle_message(sender, text)
+        reply = await handle_message(sender, text, message_id)
     except Exception:
         log.exception("handler failed for %s", sender)
         reply = "Sorry, something went wrong. Please try again."
+        finish_message(message_id, "error", reply)
 
     await send_text(sender, reply)
     return {"ok": True}

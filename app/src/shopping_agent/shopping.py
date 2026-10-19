@@ -1,13 +1,14 @@
 """Shopping-list business logic and message orchestration."""
 
+import json
 import logging
 
 from sqlmodel import select
 
 from . import pending
-from .ai_parser import Action, parse_message
+from .ai_parser import Action, Operation, parse_message
 from .db import get_session
-from .models import ShoppingItem
+from .models import ItemEvent, Message, ShoppingItem
 
 log = logging.getLogger("shopping-agent.shopping")
 
@@ -99,12 +100,61 @@ def _plural(n: int) -> str:
     return "" if n == 1 else "s"
 
 
+# ─── History ───────────────────────────────────────────────────────────────
+
+
+def record_message(sender: str, text: str) -> int:
+    """Store an inbound message on receipt and return its id."""
+    with get_session() as s:
+        msg = Message(sender=sender, text=text)
+        s.add(msg)
+        s.commit()
+        return msg.id
+
+
+def finish_message(
+    message_id: int, status: str, reply: str, ops: list[Operation] | None = None
+) -> None:
+    """Complete a stored message with its outcome, reply and parsed ops."""
+    with get_session() as s:
+        msg = s.get(Message, message_id)
+        if msg is None:
+            return
+        msg.status = status
+        msg.reply = reply
+        if ops is not None:
+            msg.ops_json = json.dumps([op.model_dump(mode="json") for op in ops])
+        s.add(msg)
+        s.commit()
+
+
+def _event(message_id: int, sender: str, action: str, item: ShoppingItem) -> ItemEvent:
+    return ItemEvent(
+        message_id=message_id,
+        sender=sender,
+        action=action,
+        item_name=item.name,
+        quantity=item.quantity,
+        unit=item.unit,
+    )
+
+
 # ─── Orchestration ─────────────────────────────────────────────────────────
 
 
-async def handle_message(sender: str, text: str) -> str:
-    """Process one inbound message from an authorised sender and return the
-    reply text to send back."""
+async def handle_message(sender: str, text: str, message_id: int) -> str:
+    """Process one inbound message from an authorised sender, record the outcome
+    on its stored Message row, and return the reply text to send back."""
+    reply, status, ops = await _process(sender, text, message_id)
+    finish_message(message_id, status, reply, ops)
+    return reply
+
+
+async def _process(
+    sender: str, text: str, message_id: int
+) -> tuple[str, str, list[Operation] | None]:
+    """Returns (reply, status, parsed ops). List changes and their ItemEvents
+    are committed together."""
     text = text.strip()
     lower = text.lower()
 
@@ -114,10 +164,13 @@ async def handle_message(sender: str, text: str) -> str:
             count = pending.take_pending(sender)
             if count is not None:
                 with get_session() as s:
+                    for it in list_items(s):
+                        s.add(_event(message_id, sender, "clear", it))
                     removed = clear_all(s)
                     s.commit()
                 log.info("action=clear count=%d by=%s", removed, sender)
-                return f"✓ List cleared ({removed} item{_plural(removed)} removed)."
+                reply = f"✓ List cleared ({removed} item{_plural(removed)} removed)."
+                return reply, "cleared", None
         else:
             # Any other message cancels the pending clear, then is processed
             # normally below.
@@ -129,19 +182,20 @@ async def handle_message(sender: str, text: str) -> str:
     ops = await parse_message(text, current)
 
     if not ops:
-        return FALLBACK_REPLY
+        return FALLBACK_REPLY, "fallback", ops
 
     # 3. A clear request short-circuits into the two-step confirmation flow.
     if any(op.action == Action.clear for op in ops):
         count = len(current)
         if count == 0:
-            return "🛒 Your shopping list is already empty."
+            return "🛒 Your shopping list is already empty.", "ok", ops
         pending.set_pending(sender, count)
         log.info("action=clear-requested count=%d by=%s", count, sender)
-        return (
+        reply = (
             f"⚠ This will remove all {count} item{_plural(count)}. "
             "Reply 'yes' within 2 minutes to confirm."
         )
+        return reply, "confirm_requested", ops
 
     # 4. Apply add / remove / list operations.
     added: list[str] = []
@@ -156,9 +210,11 @@ async def handle_message(sender: str, text: str) -> str:
                 item, created = add_item(s, sender, op.name, op.quantity, op.unit)
                 if created:
                     added.append(format_item(item))
+                    s.add(_event(message_id, sender, "add", item))
                     log.info("action=add item=%s by=%s", item.name, sender)
                 elif op.quantity is not None:
                     updated.append(format_item(item))
+                    s.add(_event(message_id, sender, "update", item))
                     log.info("action=update item=%s by=%s", item.name, sender)
                 else:
                     unchanged.append(item.name)
@@ -166,6 +222,7 @@ async def handle_message(sender: str, text: str) -> str:
                 item = remove_item(s, op.item_id)
                 if item is not None:
                     removed.append(format_item(item))
+                    s.add(_event(message_id, sender, "remove", item))
                     log.info("action=remove item=%s by=%s", item.name, sender)
             elif op.action == Action.list:
                 want_list = True
@@ -186,5 +243,5 @@ async def handle_message(sender: str, text: str) -> str:
         parts.append(list_str)
 
     if not parts:
-        return "I couldn't act on that — nothing on the list matched."
-    return "\n".join(parts)
+        return "I couldn't act on that — nothing on the list matched.", "no_match", ops
+    return "\n".join(parts), "ok", ops
