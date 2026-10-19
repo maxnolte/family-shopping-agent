@@ -3,12 +3,12 @@
 # data/shopping.db for dbt. Same online-backup approach as ../backup.sh, so
 # it is safe while the app is running. Read-only for production.
 #
-#   ./pull.sh                  # server alias "ovh", repo at ~/shopping-agent
-#   HOST=vps REMOTE_DIR=apps/shopping-agent ./pull.sh
+#   ./pull.sh                  # server alias "vps" (see README), repo at ~/shopping-agent
+#   HOST=myserver REMOTE_DIR=apps/shopping-agent ./pull.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 
-HOST="${HOST:-ovh}"
+HOST="${HOST:-vps}"
 REMOTE_DIR="${REMOTE_DIR:-shopping-agent}"
 SNAPSHOT=app/data/analytics-export.db
 

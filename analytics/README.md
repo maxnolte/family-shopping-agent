@@ -29,7 +29,7 @@ cp members.example.csv seeds/members.csv   # then put real numbers + names in it
 `seeds/members.csv` maps phone numbers to display names. It is gitignored:
 the repo is public and phone numbers are personal data.
 
-**Real data** (needs SSH access to the server, alias `ovh` by default):
+**Real data** (needs SSH access to the server; uses the `vps` alias from the main README, override with `HOST=<alias>`):
 
 ```bash
 ./pull.sh
