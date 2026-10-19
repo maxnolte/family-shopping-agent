@@ -1,0 +1,76 @@
+version: 2
+
+sources:
+  - name: app
+    description: >
+      The shopping agent's SQLite database, attached by DuckDB as the `raw`
+      catalog (see profiles.yml). `messages` and `item_events` are
+      append-only history; `shopping_items` is the current list only.
+    database: raw
+    schema: main
+    config:
+      freshness:
+        warn_after: {count: 7, period: day}
+    tables:
+      - name: messages
+        description: Every message from a whitelisted sender.
+        config:
+          loaded_at_field: received_at
+        columns:
+          - name: id
+            data_tests: [unique, not_null]
+          - name: received_at
+            description: UTC, naive timestamp.
+            data_tests: [not_null]
+          - name: sender
+            description: WhatsApp number, digits only.
+            data_tests: [not_null]
+          - name: text
+            description: Raw message text. Personal data — keep it out of marts.
+          - name: ops_json
+            description: >
+              JSON array of operations the AI parser returned, e.g.
+              [{"action": "add", "name": "milk", "quantity": null, "unit": null}].
+              Null for clear confirmations ("yes").
+          - name: reply
+          - name: status
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: [received, ok, fallback, no_match, confirm_requested, cleared, error]
+
+      - name: item_events
+        description: One row per change to the list, written with the change itself.
+        config:
+          loaded_at_field: occurred_at
+        columns:
+          - name: id
+            data_tests: [unique, not_null]
+          - name: message_id
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('app', 'messages')
+                    field: id
+          - name: occurred_at
+            data_tests: [not_null]
+          - name: sender
+          - name: action
+            data_tests:
+              - accepted_values:
+                  arguments:
+                    values: [add, update, remove, clear]
+          - name: item_name
+            description: Lowercased by the app; not otherwise normalised (plurals, typos).
+            data_tests: [not_null]
+          - name: quantity
+          - name: unit
+
+      - name: shopping_items
+        description: Current list state. Rows are deleted on remove/clear — use item_events for history.
+        config:
+          freshness: null
+        columns:
+          - name: id
+            data_tests: [unique, not_null]
