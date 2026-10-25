@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 
-FROM python:3.14-slim-bookworm
+FROM python:3.15-slim-bookworm
 
 # The app runs from the uv-built venv; the image's own pip is dead weight and
 # its vendored deps (msgpack et al.) show up in vulnerability scans.
